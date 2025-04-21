@@ -1,0 +1,107 @@
+﻿@page "/edit-transaction-type/{id:guid}"
+
+@rendermode InteractiveServer
+@inject NavigationManager Navigation
+@inject ITransactionTypeService TransactionTypeService
+@inject ISnackbar Snackbar
+
+<MudPopoverProvider />
+<MudSnackbarProvider />
+
+<MudCard Class="transaction-card">
+    <MudCardContent>
+        <MudText Typo="Typo.h5">Edit Transaction Type</MudText>
+
+        <MudTextField @bind-Value="_name" Label="Name" Required="true" Color="Color.Dark" />
+
+        <MudSelect T="TransactionCategory" @bind-Value="_category" Label="Transaction Category" Color="Color.Dark">
+            <MudSelectItem T="TransactionCategory" Value="TransactionCategory.Income">Income</MudSelectItem>
+            <MudSelectItem T="TransactionCategory" Value="TransactionCategory.Expense">Expense</MudSelectItem>
+        </MudSelect>
+
+        <MudTextField @bind-Value="_description" Label="Description" Lines="4" Color="Color.Dark" />
+    </MudCardContent>
+
+    <MudCardActions>
+        <MudButton Variant="Variant.Filled" Class="add-button" @onclick="OnUpdateTransactionTypeClicked">Save</MudButton>
+        <MudButton Variant="Variant.Filled" Class="cancel-button" @onclick="OnCancelClicked">Cancel</MudButton>
+    </MudCardActions>
+</MudCard>
+
+@code {
+    [Parameter]
+    public Guid id { get; set; }
+
+    private string _name = string.Empty;
+    private string _description = string.Empty;
+    private TransactionCategory _category;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var response = await TransactionTypeService.GetTransactionTypeByIdAsync(id);
+
+        if (!response.IsSuccess)
+        {
+            Snackbar.Add($"Error: {response.ErrorMessage}", Severity.Error);
+
+            Navigation.NavigateTo("/transaction-types");
+
+            return;
+        }
+
+        var type = response.Data;
+
+        if (type == null)
+        {
+            Snackbar.Add("Transaction type not found", Severity.Error);
+
+            Navigation.NavigateTo("/transaction-types");
+
+            return;
+        }
+
+        _name = type.Name;
+        _description = type.Description;
+        _category = type.Category;
+    }
+
+    private void OnCancelClicked()
+    {
+        Navigation.NavigateTo("/transaction-types");
+    }
+
+    private async Task OnUpdateTransactionTypeClicked()
+    {
+        if (string.IsNullOrEmpty(_name))
+        {
+            Snackbar.Add("Please enter a valid name for the transaction type.", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(_description))
+        {
+            Snackbar.Add("Please enter a valid description for the transaction type.", Severity.Warning);
+            return;
+        }
+
+        if (_category == null)
+        {
+            Snackbar.Add("Please select a valid category for the transaction type.", Severity.Warning);
+            return;
+        }
+
+        var updatedType = new UpdateTransactionTypeDto
+            {
+                Id = id,
+                Name = _name,
+                Description = _description,
+                Category = _category
+            };
+
+        await TransactionTypeService.UpdateTransactionTypeAsync(updatedType);
+
+        Snackbar.Add("Transaction type successfully updated", Severity.Success);
+
+        Navigation.NavigateTo("/transaction-types");
+    }
+}

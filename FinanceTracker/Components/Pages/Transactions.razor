@@ -1,0 +1,146 @@
+﻿@page "/transactions"
+
+@using FinanceTracker.Application.DTO
+@using FinanceTracker.Domain.Entities
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@rendermode InteractiveServer
+@inject IDialogService DialogService
+@inject ITransactionService TransactionService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject ProtectedLocalStorage LocalStorage
+
+<MudPopoverProvider />
+<MudSnackbarProvider />
+
+<div class="container">
+    <div class="top">
+        <MudDateRangePicker @bind-DateRange="_dateRange"
+                            MinDate="_minDate"
+                            MaxDate="_maxDate"
+                            Margin="Margin.Dense"
+                            HelperText="@HelperText"
+                            Variant="Variant.Outlined"
+                            Label="Range" />
+
+        <MudButton OnClick="RefreshTransactions" Variant="Variant.Filled" Color="Color.Primary">
+            Apply Filter
+        </MudButton>
+    </div>
+
+    <div class="middle">
+
+    </div>
+
+    <div class="transaction-label">
+        <span>Transactions</span>
+    </div>
+
+    <div class="d-flex justify-content-end">
+        <MudButton Variant="Variant.Filled" OnClick="NavigateToForm" Class="mb-5 add-transaction-button">
+            Add Transaction
+        </MudButton>
+    </div>
+
+    <div class="bottom">
+        <div id="table-scroll-container" class="ma-0" style="height: 500px; overflow: auto; margin-top: 20px;">
+            <MudPaper Elevation="0" Class="d-flex flex-column justify-space-between py-6">
+                <MudTable Items="@transactions" Hover="true" Striped="true" Breakpoint="Breakpoint.Sm">
+                    <HeaderContent>
+                        <MudTh>Category</MudTh>
+                        <MudTh>Amount</MudTh>
+                        <MudTh>Date and Time</MudTh>
+                        <MudTh>Type</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="transaction">
+                        <MudTd DataLabel="Category">@transaction.TransactionType.Name</MudTd>
+                        <MudTd DataLabel="Amount">@transaction.Amount</MudTd>
+                        <MudTd DataLabel="Date and Time">@transaction.Date.ToString("dd/MM/yyyy")</MudTd>
+                        @if (transaction.TransactionType.Category == TransactionCategory.Income)
+                        {
+                            <MudTd DataLabel="Type">
+                                <div class="income-style">
+                                    @transaction.TransactionType.Category.ToString()
+                                </div>
+                            </MudTd>
+                        }
+                        else
+                        {
+                            <MudTd DataLabel="Type">
+                                <div class="expense-style">
+                                    @transaction.TransactionType.Category.ToString()
+                                </div>
+                            </MudTd>
+                        }
+                        <MudTd DataLabel="Actions">
+                            <MudButton Style="color: black" OnClick="(() => EditTransaction(transaction))" StartIcon="@Icons.Material.Filled.Edit">
+                            </MudButton>
+                            <MudButton Style="color: black" OnClick="(() => DeleteTransaction(transaction))" StartIcon="@Icons.Material.Filled.Delete">
+                            </MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </div>
+    </div>
+</div>
+
+@code {
+    List<TransactionDto> transactions = new List<TransactionDto>();
+
+    private DateRange _dateRange { get; set; }
+
+    private DateTime _minDate = DateTime.Today.AddYears(-1);
+    private DateTime _maxDate = DateTime.Now.Date;
+    private string HelperText => $"Range: {_minDate:MMMM yyyy} to {_maxDate:MMMM yyyy}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var currentDate = DateTime.Now;
+        var startOfMonth = new DateTime(currentDate.Year, currentDate.Month, 1).AddMonths(-1);
+        var endOfMonth = DateTime.Now;
+
+        var result = await TransactionService.GetTransactionsAsync(startOfMonth, endOfMonth);
+
+        if (!result.IsSuccess)
+        {
+            Snackbar.Add($"Error: {result.ErrorMessage}", Severity.Error);
+
+            return;
+        }
+
+        transactions = result.Data;
+
+        _dateRange = new DateRange(startOfMonth, endOfMonth);
+    }
+
+    private async Task RefreshTransactions()
+    {
+        if (_dateRange.Start.HasValue && _dateRange.End.HasValue)
+        {
+            var result = await TransactionService.GetTransactionsAsync(_dateRange.Start.Value, _dateRange.End.Value);
+
+            transactions = result.Data;
+
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    void NavigateToForm()
+    {
+        Navigation.NavigateTo("/create-transaction");
+    }
+
+    private void EditTransaction(TransactionDto transaction)
+    {
+        Navigation.NavigateTo($"/edit-transaction/{transaction.Id}");
+    }
+
+    private void DeleteTransaction(TransactionDto transaction)
+    {
+        _ = TransactionService.DeleteTransactionAsync(transaction.Id);
+        transactions.Remove(transaction);
+        Snackbar.Add("Transaction deleted", Severity.Success);
+    }
+}

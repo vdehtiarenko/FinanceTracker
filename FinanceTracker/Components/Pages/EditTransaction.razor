@@ -1,0 +1,123 @@
+﻿@page "/edit-transaction/{transactionId:guid}"
+
+@rendermode InteractiveServer
+@inject NavigationManager Navigation
+@inject HttpClient HttpClient
+@inject ITransactionTypeService TransactionTypeService
+@inject ITransactionService TransactionService
+@inject ISnackbar Snackbar
+
+<MudPopoverProvider />
+<MudSnackbarProvider />
+
+<MudCard Class="transaction-card">
+	<MudCardContent>
+		<MudText Typo="Typo.h5">Edit Transaction</MudText>
+
+		<MudTextField @bind-Value="_amount" Label="Amount" Required="true" Type="number" Color="Color.Dark" />
+
+		<MudSelect T="TransactionCategory" @bind-Value="transactionCategory" Label="Transaction Category">
+			<MudSelectItem T="TransactionCategory" Value="TransactionCategory.Income">Income</MudSelectItem>
+			<MudSelectItem T="TransactionCategory" Value="TransactionCategory.Expense">Expense</MudSelectItem>
+		</MudSelect>
+
+		<MudSelect T="Guid?" @bind-Value="selectedTransactionTypeId" Label="Transaction Type">
+			<MudSelectItem T="Guid?" Value="null" Disabled="true">-- Select Transaction Type --</MudSelectItem>
+			@foreach (var type in transactionTypes.Where(t => t.Category == transactionCategory))
+			{
+				<MudSelectItem T="Guid?" Value="@type.Id">@type.Name</MudSelectItem>
+			}
+		</MudSelect>
+
+	</MudCardContent>
+
+	<MudCardActions>
+		<MudButton Variant="Variant.Filled" Class="add-button" @onclick="OnUpdateTransactionClicked">Save</MudButton>
+		<MudButton Variant="Variant.Filled" Class="cancel-button" @onclick="OnCancelClicked">Cancel</MudButton>
+	</MudCardActions>
+</MudCard>
+
+@code {
+	[Parameter]
+	public Guid transactionId { get; set; }
+
+	private decimal _amount;
+	private DateTime _date;
+	private Guid? selectedTransactionTypeId;
+	private TransactionCategory transactionCategory;
+	private List<TransactionTypeDto> transactionTypes = new();
+
+	protected override async Task OnInitializedAsync()
+	{
+		var transactionTypeResult = await TransactionTypeService.GetTransactionTypesAsync();
+
+		if (!transactionTypeResult.IsSuccess)
+		{
+			Snackbar.Add(transactionTypeResult.ErrorMessage, Severity.Error);
+
+			Navigation.NavigateTo("/error");
+
+			return;
+		}
+
+		transactionTypes = transactionTypeResult.Data;
+
+		var transactionResult = await TransactionService.GetTransactionByIdAsync(transactionId);
+
+		if (transactionResult is not null && transactionResult.IsSuccess)
+		{
+			var transaction = transactionResult.Data;
+
+			_amount = transaction.Amount;
+			_date = transaction.Date;
+			selectedTransactionTypeId = transaction.TransactionTypeId;
+
+			var type = transactionTypes.FirstOrDefault(t => t.Id == selectedTransactionTypeId);
+
+			if (type is not null)
+			{
+				transactionCategory = type.Category;
+			}
+		}
+		else
+		{
+			Snackbar.Add("Transaction not found", Severity.Error);
+			Navigation.NavigateTo("/transactions");
+		}
+	}
+
+	private void OnCancelClicked()
+	{
+		Navigation.NavigateTo("/transactions");
+	}
+
+	private async Task OnUpdateTransactionClicked()
+	{
+		if (_amount <= 0)
+		{
+			Snackbar.Add("Please enter a valid amount", Severity.Warning);
+			return;
+		}
+
+		if (!selectedTransactionTypeId.HasValue)
+		{
+			Snackbar.Add("Please select a transaction type", Severity.Warning);
+			return;
+		}
+
+		var updatedTransactionDto = new UpdateTransactionDto
+			{
+				Id = transactionId,
+				Amount = _amount,
+				Date = _date,
+				TransactionTypeId = selectedTransactionTypeId.Value
+			};
+
+
+		await TransactionService.UpdateTransactionAsync(updatedTransactionDto);
+
+		Snackbar.Add("Transaction successfully updated", Severity.Success);
+
+		Navigation.NavigateTo("/transactions");
+	}
+}

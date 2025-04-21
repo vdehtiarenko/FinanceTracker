@@ -1,0 +1,134 @@
+﻿@page "/date-period"
+
+@using FinanceTracker.Application.DTO
+@using FinanceTracker.Domain.Entities
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@rendermode InteractiveServer
+@inject IReportService ReportService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject ProtectedLocalStorage LocalStorage
+
+<MudPopoverProvider />
+<MudSnackbarProvider />
+
+<div class="container">
+    <div class="top">
+        <MudDateRangePicker @bind-DateRange="_dateRange"
+                            MinDate="_minDate"
+                            MaxDate="_maxDate"
+                            Margin="Margin.Dense"
+                            HelperText="@HelperText"
+                            Variant="Variant.Outlined"
+                            Label="Range" />
+
+        <MudButton OnClick="RefreshDatePeriodRepor" Variant="Variant.Filled" Color="Color.Primary">
+            Apply Filter
+        </MudButton>
+    </div>
+
+    <div class="middle">
+        <div class="left-middle">
+            <img src="/images/wallet.png" class="icon" />
+            <p class="title">Current Balance</p>
+            <p class="value">@((datePeriodReport.TotalIncome - datePeriodReport.TotalExpenses).ToString())</p>
+        </div>
+        <div class="center-middle">
+            <img src="/images/income.png" class="icon-large" />
+            <p class="title">Total Income</p>
+            <p class="value">@datePeriodReport.TotalIncome.ToString()</p>
+        </div>
+        <div class="center-middle">
+            <img src="/images/expence.png" class="icon-large" />
+            <p class="title">Total Expenses</p>
+            <p class="value">@datePeriodReport.TotalExpenses.ToString()</p>
+        </div>
+    </div>
+
+    <div class="transaction-label">
+        <span>Transactions</span>
+    </div>
+
+    <div class="bottom">
+        <div id="table-scroll-container" class="ma-0" style="height: 450px; overflow: auto; margin-top: 20px;">
+            <MudPaper Elevation="0" Class="d-flex flex-column justify-space-between py-6">
+                <MudTable Items="@datePeriodReport.Transactions" Hover="true" Striped="true" Breakpoint="Breakpoint.Sm">
+                    <HeaderContent>
+                        <MudTh>Category</MudTh>
+                        <MudTh>Amount</MudTh>
+                        <MudTh>Date and Time</MudTh>
+                        <MudTh>Type</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="transaction">
+                        <MudTd DataLabel="Category">@transaction.TransactionType.Name</MudTd>
+                        <MudTd DataLabel="Amount">@transaction.Amount</MudTd>
+                        <MudTd DataLabel="Date and Time">@transaction.Date.ToString("dd/MM/yyyy")</MudTd>
+                        @if (transaction.TransactionType.Category == TransactionCategory.Income)
+                        {
+                            <MudTd DataLabel="Type">
+                                <div class="income-style">
+                                    @transaction.TransactionType.Category.ToString()
+                                </div>
+                            </MudTd>
+                        }
+                        else
+                        {
+                            <MudTd DataLabel="Type">
+                                <div class="expense-style">
+                                    @transaction.TransactionType.Category.ToString()
+                                </div>
+                            </MudTd>
+                        }
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </div>
+    </div>
+</div>
+
+@code {
+    List<TransactionDto> transactions = new List<TransactionDto>();
+
+    private DateRange _dateRange { get; set; }
+
+    private DatePeriodReport datePeriodReport = new DatePeriodReport
+        {
+            Transactions = new List<Transaction>()
+        };
+    private DateTime _minDate = DateTime.Today.AddYears(-1);
+    private DateTime _maxDate = DateTime.Now.Date;
+    private string HelperText => $"Range: {_minDate:MMMM yyyy} to {_maxDate:MMMM yyyy}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var currentDate = DateTime.Now;
+        var startDate = currentDate.AddDays(-30);
+        var endDate = currentDate;
+
+        var result = await ReportService.GetDatePeriodReportAsync(startDate, endDate);
+
+        if (!result.IsSuccess)
+        {
+            Snackbar.Add($"Error: {result.ErrorMessage}", Severity.Error);
+
+            return;
+        }
+
+        datePeriodReport = result.Data;
+
+
+        _dateRange = new DateRange(startDate, endDate);
+    }
+
+    private async Task RefreshDatePeriodRepor()
+    {
+        if (_dateRange.Start.HasValue && _dateRange.End.HasValue)
+        {
+            var result = await ReportService.GetDatePeriodReportAsync(_dateRange.Start.Value, _dateRange.End.Value);
+
+            datePeriodReport = result.Data;
+
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}

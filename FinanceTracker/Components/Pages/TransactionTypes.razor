@@ -1,0 +1,177 @@
+﻿@page "/transaction-types"
+
+@using FinanceTracker.Application.DTO
+@using FinanceTracker.Domain.Entities
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@rendermode InteractiveServer
+@inject IDialogService DialogService
+@inject ITransactionTypeService TransactionTypeService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject ProtectedLocalStorage LocalStorage
+
+<MudPopoverProvider />
+<MudSnackbarProvider />
+
+<div class="main-container">
+	<div class="left-area">
+		<div class="type-label">
+			<span>Income Transaction Types</span>
+		</div>
+
+		<div class="d-flex justify-content-end">
+			<MudButton Variant="Variant.Filled" OnClick="() => NavigateToForm(TransactionCategory.Income)" Class="mb-5 add-transaction-type-button">
+				Add Income TransactionType
+			</MudButton>
+		</div>
+
+		<div id="table-scroll-container" class="ma-0" style="height: 500px; overflow: auto; margin-top: 20px;">
+			<MudPaper Elevation="0" Class="d-flex flex-column justify-space-between py-6">
+				<MudTable Items="@incomeTypes" Hover="true" Striped="true" Breakpoint="Breakpoint.Sm">
+					<HeaderContent>
+						<MudTh>Name</MudTh>
+						<MudTh>Description</MudTh>
+						<MudTh>Type</MudTh>
+						<MudTh>Actions</MudTh>
+					</HeaderContent>
+					<RowTemplate Context="transactionType">
+						<MudTd DataLabel="Name">@transactionType.Name</MudTd>
+						<MudTd DataLabel="Description">@transactionType.Description</MudTd>
+
+						@if (transactionType.Category == TransactionCategory.Income)
+						{
+							<MudTd DataLabel="Type">
+								<div class="income-style">
+									@transactionType.Category.ToString()
+								</div>
+							</MudTd>
+						}
+						else
+						{
+							<MudTd DataLabel="Type">
+								<div class="expense-style">
+									@transactionType.Category.ToString()
+								</div>
+							</MudTd>
+						}
+
+						<MudTd DataLabel="Actions">
+							<MudButton Style="color: black" OnClick="(() => EditTransactionType(transactionType))" StartIcon="@Icons.Material.Filled.Edit">
+							</MudButton>
+							<MudButton Style="color: black" OnClick="(() => DeleteTransactionType(transactionType))" StartIcon="@Icons.Material.Filled.Delete">
+							</MudButton>
+						</MudTd>
+					</RowTemplate>
+				</MudTable>
+			</MudPaper>
+		</div>
+	</div>
+	<div class="right-area">
+		<div class="type-label">
+			<span>Expense Transaction Types</span>
+		</div>
+
+		<div class="d-flex justify-content-end">
+			<MudButton Variant="Variant.Filled" OnClick="() => NavigateToForm(TransactionCategory.Expense)" Class="mb-5 add-transaction-type-button">
+				Add Expense TransactionType
+			</MudButton>
+		</div>
+
+		<div id="table-scroll-container" class="ma-0" style="height: 500px; overflow: auto; margin-top: 20px;">
+			<MudPaper Elevation="0" Class="d-flex flex-column justify-space-between py-6">
+				<MudTable Items="@expenseTypes" Hover="true" Striped="true" Breakpoint="Breakpoint.Sm">
+					<HeaderContent>
+						<MudTh>Name</MudTh>
+						<MudTh>Description</MudTh>
+						<MudTh>Type</MudTh>
+						<MudTh>Actions</MudTh>
+					</HeaderContent>
+					<RowTemplate Context="transactionType">
+						<MudTd DataLabel="Name">@transactionType.Name</MudTd>
+						<MudTd DataLabel="Description">@transactionType.Description</MudTd>
+
+						@if (transactionType.Category == TransactionCategory.Income)
+						{
+							<MudTd DataLabel="Type">
+								<div class="income-style">
+									@transactionType.Category.ToString()
+								</div>
+							</MudTd>
+						}
+						else
+						{
+							<MudTd DataLabel="Type">
+								<div class="expense-style">
+									@transactionType.Category.ToString()
+								</div>
+							</MudTd>
+						}
+
+						<MudTd DataLabel="Actions">
+							<MudButton Style="color: black" OnClick="(() => EditTransactionType(transactionType))" StartIcon="@Icons.Material.Filled.Edit">
+							</MudButton>
+							<MudButton Style="color: black" OnClick="(() => DeleteTransactionType(transactionType))" StartIcon="@Icons.Material.Filled.Delete">
+							</MudButton>
+						</MudTd>
+					</RowTemplate>
+				</MudTable>
+			</MudPaper>
+		</div>
+	</div>
+</div>
+
+
+@code {
+	List<TransactionTypeDto> transactionsTypes = new List<TransactionTypeDto>();
+
+	List<TransactionTypeDto> incomeTypes => transactionsTypes.Where(t => t.Category == TransactionCategory.Income).ToList();
+	List<TransactionTypeDto> expenseTypes => transactionsTypes.Where(t => t.Category == TransactionCategory.Expense).ToList();
+
+
+	protected override async Task OnInitializedAsync()
+	{
+		var result = await TransactionTypeService.GetTransactionTypesAsync();
+
+		if (!result.IsSuccess)
+		{
+			Snackbar.Add($"Error: {result.ErrorMessage}", Severity.Error);
+
+			return;
+		}
+
+		transactionsTypes = result.Data!;
+	}
+
+	void NavigateToForm(TransactionCategory transactionCategory)
+	{
+		Navigation.NavigateTo($"/create-transaction-type/{transactionCategory}");
+	}
+
+	private void EditTransactionType(TransactionTypeDto transactionType)
+	{
+		Navigation.NavigateTo($"/edit-transaction-type/{transactionType.Id}");
+	}
+
+	private void DeleteTransactionType(TransactionTypeDto transactionType)
+	{
+		TransactionTypeService.DeleteTransactionTypeAsync(transactionType.Id);
+
+		transactionsTypes.Remove(transactionType);
+
+		Snackbar.Add("Transaction Type deleted", Severity.Success);
+	}
+}
+
+<style>
+    .main-container {
+        display: flex;
+        height: 100vh;
+    }
+
+    .left-area, .right-area {
+        flex: 1; 
+        display: flex;
+        flex-direction: column;
+        padding: 10px;
+    }
+</style>

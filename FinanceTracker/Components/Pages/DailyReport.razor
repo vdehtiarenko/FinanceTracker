@@ -1,0 +1,119 @@
+﻿@page "/daily-report"
+
+@using FinanceTracker.Application.DTO
+@using FinanceTracker.Domain.Entities
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@rendermode InteractiveServer
+@inject IReportService ReportService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject ProtectedLocalStorage LocalStorage
+
+<MudPopoverProvider />
+<MudSnackbarProvider />
+
+<div class="container">
+	<div class="top">
+		<MudDatePicker @bind-Date="_date"
+					   Label="Date"
+					   MinDate="_minDate"
+					   MaxDate="_maxDate"
+					   Margin="Margin.Dense"
+					   Variant="Variant.Outlined"
+					   HelperText="@HelperText" />
+
+		<MudButton OnClick="RefreshDailyReport" Variant="Variant.Filled" Color="Color.Primary">
+			Apply Filter
+		</MudButton>
+	</div>
+
+	<div class="middle">
+		<div class="left-middle">
+			<img src="/images/wallet.png" class="icon" />
+			<p class="title">Current Balance</p>
+			<p class="value">@((_dailyReport.TotalIncome - _dailyReport.TotalExpenses).ToString())</p>
+		</div>
+		<div class="center-middle">
+			<img src="/images/income.png" class="icon-large" />
+			<p class="title">Total Income</p>
+			<p class="value">@_dailyReport.TotalIncome.ToString()</p>
+		</div>
+		<div class="center-middle">
+			<img src="/images/expence.png" class="icon-large" />
+			<p class="title">Total Expenses</p>
+			<p class="value">@_dailyReport.TotalExpenses.ToString()</p>
+		</div>
+	</div>
+
+	<div class="transaction-label">
+		<span>Transactions</span>
+	</div>
+
+	<div class="bottom">
+		<div id="table-scroll-container" class="ma-0" style="height: 450px; overflow: auto; margin-top: 20px;">
+			<MudPaper Elevation="0" Class="d-flex flex-column justify-space-between py-6">
+				<MudTable Items="@_dailyReport.Transactions" Hover="true" Striped="true" Breakpoint="Breakpoint.Sm">
+					<HeaderContent>
+						<MudTh>Category</MudTh>
+						<MudTh>Amount</MudTh>
+						<MudTh>Date and Time</MudTh>
+						<MudTh>Type</MudTh>
+					</HeaderContent>
+					<RowTemplate Context="transaction">
+						<MudTd DataLabel="Category">@transaction.TransactionType.Name</MudTd>
+						<MudTd DataLabel="Amount">@transaction.Amount</MudTd>
+						<MudTd DataLabel="Date and Time">@transaction.Date.ToString("dd/MM/yyyy HH:mm")</MudTd>
+						@if (transaction.TransactionType.Category == TransactionCategory.Income)
+						{
+							<MudTd DataLabel="Type">
+								<div class="income-style">
+									@transaction.TransactionType.Category.ToString()
+								</div>
+							</MudTd>
+						}
+						else
+						{
+							<MudTd DataLabel="Type">
+								<div class="expense-style">
+									@transaction.TransactionType.Category.ToString()
+								</div>
+							</MudTd>
+						}
+					</RowTemplate>
+				</MudTable>
+			</MudPaper>
+		</div>
+	</div>
+</div>
+
+@code {
+	private DateTime? _date = DateTime.Today;
+	private DateTime _minDate = DateTime.Today.AddYears(-1);
+	private DateTime _maxDate = DateTime.Today;
+	private string HelperText => $"Range: {_minDate:MMMM yyyy} to {_maxDate:MMMM yyyy}";
+
+	private FinanceTracker.Application.DTO.DailyReport _dailyReport = new FinanceTracker.Application.DTO.DailyReport();
+
+	protected override async Task OnInitializedAsync()
+	{
+		var result = await ReportService.GetDailyReportAsync(_date.Value);
+
+		if (!result.IsSuccess)
+		{
+			Snackbar.Add($"Error: {result.ErrorMessage}", Severity.Error);
+
+			return;
+		}
+
+		_dailyReport = result.Data;
+	}
+
+	private async Task RefreshDailyReport()
+	{
+		var result = await ReportService.GetDailyReportAsync(_date.Value);
+
+		_dailyReport = result.Data;
+
+		await InvokeAsync(StateHasChanged);
+	}
+}

@@ -1,0 +1,84 @@
+﻿@page "/create-transaction-type/{Category}"
+
+@rendermode InteractiveServer
+@inject NavigationManager Navigation
+@inject ITransactionTypeService TransactionTypeService
+@inject ISnackbar Snackbar
+
+<MudPopoverProvider />
+<MudSnackbarProvider />
+
+<MudCard Class="transaction-card">
+    <MudCardContent>
+        <MudText Typo="Typo.h5">Add Transaction Type</MudText>
+
+        <MudTextField @bind-Value="name" Label="Name" Required="true" Color="Color.Dark" />
+
+        <MudSelect T="TransactionCategory" Value="ParsedCategory" Label="Transaction Category" Disabled="true" Color="Color.Dark">
+            <MudSelectItem T="TransactionCategory" Value="TransactionCategory.Income">Income</MudSelectItem>
+            <MudSelectItem T="TransactionCategory" Value="TransactionCategory.Expense">Expense</MudSelectItem>
+        </MudSelect>
+
+        <MudTextField @bind-Value="description" Label="Description" Lines="4" Color="Color.Dark" />
+    </MudCardContent>
+
+    <MudCardActions>
+        <MudButton Variant="Variant.Filled" Class="add-button" @onclick="OnCreateTransactionTypeClicked">Add</MudButton>
+        <MudButton Variant="Variant.Filled" Class="cancel-button" @onclick="OnCancelClicked">Cancel</MudButton>
+    </MudCardActions>
+</MudCard>
+
+@code {
+    [Parameter]
+    public string Category { get; set; } = "";
+
+    private TransactionCategory ParsedCategory;
+
+    private string name = string.Empty;
+    private string description = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        if (!Enum.TryParse(Category, true, out ParsedCategory))
+        {
+            Snackbar.Add("Invalid category type in URL", Severity.Error);
+
+            Navigation.NavigateTo("/transaction-types");
+        }
+    }
+
+    private void OnCancelClicked()
+    {
+        Navigation.NavigateTo("/transaction-types");
+    }
+
+    private async Task OnCreateTransactionTypeClicked()
+    {
+        if (string.IsNullOrEmpty(name))
+        {
+            Snackbar.Add("Please enter a valid name for the transaction type.", Severity.Warning);
+
+            return;
+        }
+
+        if (string.IsNullOrEmpty(description))
+        {
+            Snackbar.Add("Please enter a valid description for the transaction type.", Severity.Warning);
+
+            return;
+        }
+
+        var newType = new CreateTransactionTypeDto
+            {
+                Name = name,
+                Description = description,
+                Category = ParsedCategory
+            };
+
+        await TransactionTypeService.CreateTransactionTypeAsync(newType);
+
+        Snackbar.Add("Transaction type successfully added", Severity.Success);
+
+        Navigation.NavigateTo("/transaction-types");
+    }
+}

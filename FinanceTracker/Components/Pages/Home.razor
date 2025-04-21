@@ -1,0 +1,319 @@
+﻿@page "/"
+
+@using System.Text.Json
+@using MudBlazor
+@rendermode InteractiveServer
+@inject HttpClient httpClient
+@inject IJSRuntime JSRuntime
+@inject IReportService ReportService;
+@inject ISnackbar Snackbar
+
+<MudSnackbarProvider />
+
+<PageTitle>Home</PageTitle>
+
+<div class="main-container">
+	<div class="left-area">
+		<div class="top-section">
+			<div class="left-top">
+				<img src="/images/wallet.png" class="icon" />
+				<p class="title">Current Balance</p>
+				<p class="value">@((datePeriodReport.TotalIncome - datePeriodReport.TotalExpenses).ToString())</p>
+			</div>
+			<div class="center-top">
+				<img src="/images/income.png" class="icon-large" />
+				<p class="title">Total Income</p>
+				<p class="value">@datePeriodReport.TotalIncome.ToString()</p>
+			</div>
+			<div class="center-top">
+				<img src="/images/expence.png" class="icon-large" />
+				<p class="title">Total Expenses</p>
+				<p class="value">@datePeriodReport.TotalExpenses.ToString()</p>
+			</div>
+		</div>
+
+		<div class="middle-section">
+			<p>Middle Section - Vertical Bar Chart</p>
+			<div class="chart-container">
+				<canvas id="barChart" width="700" height="200"></canvas>
+			</div>
+		</div>
+
+		<div class="bottom-section">
+			<p>Bottom Section</p>
+			<div id="table-scroll-container" class="ma-0" style="height: 200px; overflow: auto;">
+				<MudPaper Elevation="0" Class="d-flex flex-column justify-space-between py-6">
+					<MudTable Items="@datePeriodReport.Transactions" Hover="true" Striped="true" Breakpoint="Breakpoint.Sm">
+						<HeaderContent>
+							<MudTh>Category</MudTh>
+							<MudTh>Amount</MudTh>
+							<MudTh>Date and Time</MudTh>
+							<MudTh>Type</MudTh>
+						</HeaderContent>
+						<RowTemplate Context="transaction">
+							<MudTd DataLabel="Category">@transaction.TransactionType.Name</MudTd>
+							<MudTd DataLabel="Amount">@transaction.Amount</MudTd>
+							<MudTd DataLabel="Date and Time">@transaction.Date</MudTd>
+							@if (transaction.TransactionType.Category.ToString() == "Income")
+							{
+								<MudTd DataLabel="Type">
+									<div class="income-style">
+										@transaction.TransactionType.Category.ToString()
+									</div>
+								</MudTd>
+							}
+							else
+							{
+								<MudTd DataLabel="Type">
+									<div class="expense-style">
+										@transaction.TransactionType.Category.ToString()
+									</div>
+								</MudTd>
+							}
+						</RowTemplate>
+					</MudTable>
+				</MudPaper>
+			</div>
+		</div>
+	</div>
+
+	<div class="right-area" style="width: 400px; border-left: 1px solid 1px solid rgba(128, 128, 128, 0.3); padding: 20px;">
+		<label style="font-size: 18px; font-weight: bold;">Most Expenses</label>
+		<div class="chart-container" style="width: 100%; height: 300px; overflow: hidden; display: flex; justify-content: center; align-items: center;">
+			<canvas id="expensesdoughnutChart" width="200" height="200"></canvas>
+		</div>
+
+		<label style="margin-top: 80px; font-size: 18px; font-weight: bold;">Most Income</label>
+		<div class="chart-container" style="width: 100%; height: 300px; overflow: hidden; display: flex; justify-content: center; align-items: center;">
+			<canvas id="incomeDoughnutChart" width="200" height="200"></canvas>
+		</div>
+	</div>
+</div>
+
+@code {
+	private DatePeriodReport datePeriodReport = new DatePeriodReport
+		{
+			Transactions = new List<Transaction>()
+		};
+
+	Dictionary<DateTime, decimal> incomePerDay = new Dictionary<DateTime, decimal>();
+	Dictionary<DateTime, decimal> expensesPerDay = new Dictionary<DateTime, decimal>();
+
+	List<string> labels = new List<string>();
+	List<decimal> incomeData = new List<decimal>();
+	List<decimal> expensesData = new List<decimal>();
+
+	private bool isFirstRender = true;
+	private bool isDataLoaded = false;
+
+	private bool _hidePosition;
+	private bool _loading;
+
+	protected override async Task OnInitializedAsync()
+	{
+		var currentDate = DateTime.Now;
+		var startDate = currentDate.AddDays(-30);
+		var endDate = currentDate;
+
+        var result = await ReportService.GetDatePeriodReportAsync(startDate, endDate);
+
+        if (!result.IsSuccess)
+        {
+            Snackbar.Add($"Error: {result.ErrorMessage}", Severity.Error);
+
+            return;
+        }
+
+        datePeriodReport = result.Data;
+
+		foreach (var transaction in datePeriodReport.Transactions)
+		{
+			var transactionDate = transaction.Date.Date;
+
+			if (transaction.TransactionType.Category == TransactionCategory.Income)
+			{
+				if (!incomePerDay.ContainsKey(transactionDate))
+					incomePerDay[transactionDate] = 0;
+				incomePerDay[transactionDate] += transaction.Amount;
+			}
+			else
+			{
+				if (!expensesPerDay.ContainsKey(transactionDate))
+					expensesPerDay[transactionDate] = 0;
+				expensesPerDay[transactionDate] += transaction.Amount;
+			}
+		}
+
+		for (int i = 30; i >= 0; i--)
+		{
+			var date = DateTime.Today.AddDays(-i);
+
+			labels.Add(date.ToString("dd/MM/yyyy"));
+
+			incomeData.Add(incomePerDay.ContainsKey(date) ? incomePerDay[date] : 0);
+
+			expensesData.Add(expensesPerDay.ContainsKey(date) ? -expensesPerDay[date] : 0);
+		}
+
+
+		isDataLoaded = true;
+	}
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (isFirstRender && isDataLoaded)
+		{
+			isFirstRender = false;
+
+			if (datePeriodReport.Transactions.Any())
+			{
+				await GenerateCharts();
+			}
+		}
+	}
+
+    private async Task GenerateCharts()
+    {
+        var expenses = datePeriodReport.Transactions
+            .Where(t => t.TransactionType.Category == TransactionCategory.Expense)
+            .ToList();
+
+        if (expenses.Any())
+        {
+            var expenseFrequency = expenses
+                .GroupBy(t => t.TransactionType.Name)
+                .Select(g => new
+                {
+                    Name = g.Key,
+                    Count = g.Count()
+                })
+                .OrderByDescending(e => e.Count)
+                .Take(5)
+                .ToList();
+
+            int totalExpensesCount = expenses.Count;
+
+            var doughnutChartData = new
+            {
+                type = "doughnut",
+                data = new
+                {
+                    labels = expenseFrequency.Select(e => e.Name).ToArray(),
+                    datasets = new[] {
+                    new {
+                        data = expenseFrequency.Select(e => (e.Count * 100.0 / totalExpensesCount)).ToArray(),
+                        backgroundColor = new[] { "#6D2323", "#A31D1D", "#E5D0AC", "#FEF9E1", "#E17564" }
+                    }
+                }
+                },
+                options = new
+                {
+                    cutout = 90,
+                    responsive = true,
+                    plugins = new { legend = new { position = "top" } }
+                }
+            };
+
+            await JSRuntime.InvokeVoidAsync("eval", @"
+            var ctx1 = document.getElementById('expensesdoughnutChart').getContext('2d');
+            new Chart(ctx1, " + JsonSerializer.Serialize(doughnutChartData) + @");
+        ");
+        }
+
+        var incomes = datePeriodReport.Transactions
+            .Where(t => t.TransactionType.Category == TransactionCategory.Income)
+            .ToList();
+
+        if (incomes.Any())
+        {
+            var incomeFrequency = incomes
+                .GroupBy(t => t.TransactionType.Name)
+                .Select(g => new
+                {
+                    Name = g.Key,
+                    Count = g.Count()
+                })
+                .OrderByDescending(e => e.Count)
+                .Take(5)
+                .ToList();
+
+            int totalIncomesCount = incomes.Count;
+
+            var incomeDoughnutChartData = new
+            {
+                type = "doughnut",
+                data = new
+                {
+                    labels = incomeFrequency.Select(e => e.Name).ToArray(),
+                    datasets = new[] {
+                    new {
+                        data = incomeFrequency.Select(e => (e.Count * 100.0 / totalIncomesCount)).ToArray(),
+                        backgroundColor = new[] { "#5D8736", "#809D3C", "#A9C46C", "#F4FFC3", "#FEF9E1" }
+                    }
+                }
+                },
+                options = new
+                {
+                    cutout = 90,
+                    responsive = true,
+                    plugins = new { legend = new { position = "top" } }
+                }
+            };
+
+            await JSRuntime.InvokeVoidAsync("eval", @"
+            var ctx3 = document.getElementById('incomeDoughnutChart').getContext('2d');
+            new Chart(ctx3, " + JsonSerializer.Serialize(incomeDoughnutChartData) + @");
+        ");
+        }
+
+        var barChartData = new
+        {
+            type = "bar",
+            data = new
+            {
+                labels = labels.ToArray(),
+                datasets = new[] {
+                new
+                {
+                    label = "Income",
+                    data = incomeData.ToArray(),
+                    backgroundColor = "rgba(110, 194, 7, 0.2)",
+                    borderColor = "rgba(110, 194, 7)",
+                    borderWidth = 1
+                },
+                new
+                {
+                    label = "Expenses",
+                    data = expensesData.ToArray(),
+                    backgroundColor = "rgba(255, 99, 132, 0.2)",
+                    borderColor = "rgba(255, 99, 132, 1)",
+                    borderWidth = 1
+                }
+            }
+            },
+            options = new
+            {
+                responsive = true,
+                scales = new
+                {
+                    y = new
+                    {
+                        beginAtZero = true,
+                        stacked = true
+                    }
+                },
+                plugins = new
+                {
+                    legend = new { position = "top" }
+                }
+            }
+        };
+
+        await JSRuntime.InvokeVoidAsync("eval", @"
+        var ctx2 = document.getElementById('barChart').getContext('2d');
+        new Chart(ctx2, " + JsonSerializer.Serialize(barChartData) + @");
+    ");
+    }
+
+}
+
